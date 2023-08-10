@@ -36,19 +36,11 @@ function ENT:OnRemove()
 
 		if (inventory) then
 			ix.item.inventories[index] = nil
-
-			local query = mysql:Delete("ix_items")
-				query:Where("inventory_id", index)
-			query:Execute()
-
-			query = mysql:Delete("ix_inventories")
-				query:Where("inventory_id", index)
-			query:Execute()
+			table.insert(PLUGIN.entitiesToRemove, index)
 
 			hook.Run("ContainerRemoved", self, inventory)
 		end
 	end
-	PLUGIN:saveStorage()
 end
 
 function ENT:OpenInventory(activator)

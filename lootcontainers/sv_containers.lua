@@ -2,51 +2,54 @@ local PLUGIN = PLUGIN
 
 PLUGIN.spawnedContainers = PLUGIN.spawnedContainers or {}
 PLUGIN.spawners = PLUGIN.spawners or {}
+PLUGIN.entitiesToRemove = {}
 
 PLUGIN.curTime = 1
 function PLUGIN:Think()
-    if ix.config.Get("lootEnabled") and self.spawners != nil then
-        if (CurTime() < (self.curTime + ix.config.Get("lootContainerTime"))) then return end
-        self.curTime = CurTime()
+    if !ix.config.Get("lootEnabled") or !self.spawners then return end
+    if (CurTime() < (self.curTime + ix.config.Get("lootContainerTime"))) then return end
 
-        --Remove all invalid containers
-        for k, v in pairs(self.spawnedContainers) do
-            --If entity has removed itself after decay time we remove it from the table as well
-            if (!IsValid(v[1])) then
+    self.curTime = CurTime()
+
+    --Remove all invalid containers
+    for k, container in pairs(self.spawnedContainers) do
+        --If entity has removed itself after decay time we remove it from the table as well
+        if (!IsValid(container[1])) then
+            table.remove(self.spawnedContainers, k)
+        else
+            inventory = container[1]:GetInventory()
+            items = inventory:GetItems()
+            local count = 0
+            -- Since it's an indexed table we can't use #items to get item count
+            for _, item in pairs(items) do
+                count = count + 1
+            end
+            --If there are no items inside the container we will remove it before decay time
+            if (count == 0) then
+                container[1]:Remove()
                 table.remove(self.spawnedContainers, k)
-            else
-                inventory = v[1]:GetInventory()
-                items = inventory:GetItems()
-                local count = 0
-                -- Since it's an indexed table we can't use #items to get item count
-                for _, v in pairs(items) do
-                    count = count + 1
-                end
-                --If there are no items inside the container we will remove it before decay time
-                if (count == 0) then
-                    v[1]:Remove()
-                    table.remove(self.spawnedContainers, k)
-                end
             end
         end
-        
-        if (#self.spawnedContainers < ix.config.Get("lootMaxWorldContainers")) then
-            if (#self.spawnedContainers < (ix.config.Get("lootMaxContainerSpawn")*#self.spawners)) then          
-                for i=1,ix.config.Get("lootMaxContainerSpawn") do
-                    local point = table.Random(self.spawners)
-                    if (!point) then return end 
-                    if #self.spawnedContainers >= ix.config.Get("lootMaxWorldContainers") then return end
-                    if ix.config.Get("lootMaxContainerSpawn") == 1 then
-                        for _, v in pairs(self.spawnedContainers) do
-                            if point[1] == v[2] then return end
-                        end
-                    end
-
-                    timer.Simple(0.5, function() self:spawnContainer(point) end)
-                end
-            end
-        end	
     end
+     
+    if (#self.spawnedContainers > ix.config.Get("lootMaxWorldContainers")) then return end
+    if (#self.spawnedContainers > (ix.config.Get("lootMaxContainerSpawn")*#self.spawners)) then return end
+
+    for i=1,ix.config.Get("lootMaxContainerSpawn") do
+        local point = table.Random(self.spawners)
+        if (!point) then return end 
+        if #self.spawnedContainers >= ix.config.Get("lootMaxWorldContainers") then return end
+        if ix.config.Get("lootMaxContainerSpawn") == 1 then
+            for _, v in pairs(self.spawnedContainers) do
+                if point[1] == v[2] then return end
+            end
+        end
+
+        timer.Simple(0.5, function() self:spawnContainer(point) end)
+    end
+    
+    
+
 end
 
 function PLUGIN:AddSpawner(location, model)
@@ -63,33 +66,38 @@ function PLUGIN:RemoveSpawners(location, range)
             count = count+1
         end
     end
-    PLUGIN:saveStorage()
+    PLUGIN:SaveLootContainers()
     return count
 end
 
 function PLUGIN:spawnContainer(point)
+    local model = point[2]
+    local position = point[1] + Vector(math.random(-32, 32), math.random(-32, 32), math.random(16, 32))
+    if !IsValid(model) then
+        model = "models/props_junk/garbage_bag001a.mdl"
+    end    
+    local invData = self.containerModel[model]["invData"]
+
     local entity = ents.Create("nut_itemcontainer")
-    entity:SetPos(point[1] + Vector(math.random(1, 64), math.random(1, 64), 16))
+    entity:SetPos(position)
     entity:SetAngles(entity:GetAngles())
+    entity:SetName("itemcontainer-"..math.random())
     entity:Spawn()
-    entity:SetModel(point[2])
+    entity:SetModel(model)
     entity:SetSolid(SOLID_VPHYSICS)
     entity:PhysicsInit(SOLID_VPHYSICS)
+    
     local physObj = entity:GetPhysicsObject()
-
     if (IsValid(physObj)) then
         physObj:EnableMotion(true)
         physObj:Wake()
     end
-
-    local invName = "itemcontainer-"..math.random()
-    local invData = PLUGIN.containerModel[entity:GetModel()]["invData"]
     
-    ix.inventory.New(0, invName, function(inventory)
-        if (IsValid(entity)) then
+    if !IsValid(entity) then return end
+    
+    ix.inventory.New(0, entity:GetName(), function(inventory)
             inventory:SetSize(invData["w"], invData["h"])
             entity:SetInventory(inventory)
-        end
     end)
 
     local result = self:chooseRandom()
@@ -100,34 +108,62 @@ function PLUGIN:spawnContainer(point)
         inv:Add(item)
     end
 
-    self.spawnedContainers[#self.spawnedContainers + 1] = {entity, point[1]}
+    local spawnedContainer = {entity, position}
+
+    table.insert(self.spawnedContainers, spawnContainer)
+    PLUGIN:SaveLootContainers()
 end
 
 function PLUGIN:chooseRandom()
-    local weight = 0.0
-    for _, v in pairs(self.rarity) do
-        weight = weight + v[1]
+    local totalWeight = 0.0
+    
+    for _, rarity in pairs(self.rarity) do
+        totalWeight = totalWeight + rarity[1]
     end
-    local at = math.random() * weight
+
+    local randomWeight = math.random() * totalWeight
+    local selectedRarity
 
     local result = 0;
-    for k, v in pairs(self.rarity) do
-        if at < v[1] then
-            result = table.Random(v[2])
+    for k, rarity in pairs(self.rarity) do
+        if randomWeight < rarity[1] then
+            selectedRarity = table.Random(rarity[2])
             break
         end
-        at = at - v[1]
+        randomWeight = randomWeight - rarity[1]
     end
 
-    if !result then
-        result = self.rarity["common"][2]
-    end
-
-    return result
+    return selectedRarity or self.rarity["common"][2]
 end
 
-function PLUGIN:saveStorage()
-  	local data = {}
+function PLUGIN:PlayerSpawnedProp(client, model, entity)
+    local data = self.models[model]
+    if (!data) then return end
+    if (hook.Run("CanPlayerSpawnTrashcan", client, model, entity) == false) then return end
+
+    local trashcan = ents.Create("ix_trashcan")
+    trashcan:SetPos(entity:GetPos())
+    trashcan:SetAngles(entity:GetAngles())
+    trashcan:SetModel(model)
+    trashcan:Spawn()
+    trashcan.id = math.random(10000,99999)
+
+    self:SaveLootContainers()
+    entity:Remove()
+    
+end
+
+timer.Create("SaveLootContainers", ix.config.Get("lootSaveTime", 300), 0, function()
+    PLUGIN:SaveLootContainers()
+end)
+
+function PLUGIN:SaveLootContainers()
+    local data = {}
+
+  	data.containers = {}
+    data.spawnedContainers = {}
+    data.spawners = {}
+    data.trashcans = {}
 
     if (ix.config.Get("lootPersistentContainers")) then
         for _, entity in ipairs(ents.FindByClass("nut_itemcontainer")) do
@@ -136,30 +172,48 @@ function PLUGIN:saveStorage()
                 continue
             end
             if (entity:GetInventory()) then
-                data[#data + 1] = {
-                    entity:GetPos(),
-                    entity:GetAngles(),
-                    entity:GetNetVar("id"),
-                    entity:GetModel():lower()
-                }
+                local lootcontainer = {}
+                lootcontainer[1] = entity:GetPos()
+                lootcontainer[2] = entity:GetAngles()
+                lootcontainer[3] = entity:GetNetVar("id")
+                lootcontainer[4] = entity:GetModel():lower()
+
+                table.insert(data.containers, lootcontainer)
             end
         end
-        data[#data + 1] = self.spawnedContainers
+        table.insert(data.spawnedContainers, PLUGIN.spawnedContainers)
     end
-    data[#data + 1] = self.spawners
+    table.insert(data.spawners, PLUGIN.spawners)
+
+    for _, v in ipairs(ents.FindByClass("ix_trashcan")) do
+        local trashcan = {}
+        trashcan.position = v:GetPos()
+        trashcan.angles = v:GetAngles()
+        trashcan.model = v:GetModel():lower()
+        trashcan.id = v.id
+
+        table.insert(data.trashcans, trashcan)
+        
+    end
 
   	self:SetData(data)
 end
 
+function PLUGIN:SaveData()
+    if (!ix.shuttingDown) then
+        self:SaveLootContainers()
+    end
+end
+
 function PLUGIN:LoadData()
 	local data = self:GetData() or {}
-	if (not data) then return end
+	if (!data) then return end
 
     if (ix.config.Get("lootPersistentContainers")) then
-        for _, info in ipairs(data) do
+        for _, info in ipairs(data.containers) do
             local position, angles, invID, model = unpack(info)
             local storage = self.containerModel[model]
-            if (not storage) then continue end
+            if (!storage) then continue end
 
             local storage = ents.Create("nut_itemcontainer")
             storage:SetPos(position)
@@ -183,10 +237,49 @@ function PLUGIN:LoadData()
                 physObject:EnableMotion()
             end
         end
-        self.spawnedContainers = data[#data-1]
+        self.spawnedContainers = data.spawnedContainers[#data.spawnedContainers-1]
     end
 
-    self.spawners = data[#data]
+    for _, trashcan in pairs(data.trashcans) do
+        local model = self.models[trashcan.model:lower()]
+        if !model then return end
+
+        local entity = ents.Create("ix_trashcan") 
+        entity:SetPos(trashcan.position)
+        entity:SetAngles(trashcan.angles)
+        entity:Spawn()
+        entity:SetModel(trashcan.model)
+        entity:SetSolid(SOLID_VPHYSICS)
+        entity:PhysicsInit(SOLID_VPHYSICS)
+
+        if (trashcan.id) then
+            entity.id = trashcan.id
+            entity:SetNetVar("id", trashcan.id)
+        end
+        
+
+        local physObject = entity:GetPhysicsObject()
+        if (physObject) then
+            physObject:EnableMotion()
+        end
+        
+    end
+
+    self.spawners = data.spawners[#data.spawners]
 
 	self.loadedData = true
 end
+
+timer.Create("BatchRemove", ix.config.Get("lootEntityRemoveTime", 60), 0, function()
+    if (#PLUGIN.entitiesToRemove > 0) then
+        local query = mysql:Delete("ix_items")
+        query:WhereIn("inventory_id", PLUGIN.entitiesToRemove)
+        query:Execute()
+
+        query = mysql:Delete("ix_inventories")
+        query:WhereIn("inventory_id", PLUGIN.entitiesToRemove)
+        query:Execute()
+
+        PLUGIN.entitiesToRemove = {}
+    end
+end)

@@ -47,6 +47,8 @@ function ENT:OpenInventory(activator)
 	local inventory = self:GetInventory()
 	local name = "Loot"
 
+	if !inventory then return end
+
 	ix.storage.Open(activator, inventory, {
 		name = name,
 		entity = self,

@@ -72,29 +72,48 @@ end
 
 function PLUGIN:spawnContainer(point)
     local model = point[2]
-    local position = point[1] + Vector(math.random(-32, 32), math.random(-32, 32), math.random(16, 32))
     if !IsValid(model) then
         model = "models/props_junk/garbage_bag001a.mdl"
-    end    
-    local invData = self.containerModel[model]["invData"]
+    end
+
+    local positionOffset = Vector(math.random(-32, 32), math.random(-32, 32), math.random(0, 16))
+    local proposedPosition = point[1] + positionOffset
+
+    // Tracing the world ensures no entities get stuck underground for some reason
+    local startPosition = proposedPosition
+    local endPosition = proposedPosition + Vector(0, 0, -100)
+    local tr = util.TraceLine({
+        start = startPosition,
+        endpos = endPosition,
+        filter = function(ent) 
+            if ent:IsWorld() then 
+                return true 
+            end 
+        end
+    })
+    if !tr.HitWorld then
+        return
+    end
+    local position = tr.HitPos + Vector(0, 0, 5)
 
     local entity = ents.Create("nut_itemcontainer")
+    entity:SetModel(model)
     entity:SetPos(position)
-    entity:SetAngles(entity:GetAngles())
     entity:SetName("itemcontainer-"..math.random())
     entity:Spawn()
-    entity:SetModel(model)
     entity:SetSolid(SOLID_VPHYSICS)
     entity:PhysicsInit(SOLID_VPHYSICS)
     
     local physObj = entity:GetPhysicsObject()
-    if (IsValid(physObj)) then
+    if IsValid(physObj) then
+        physObj:SetVelocity(Vector(0, 0, 0))
         physObj:EnableMotion(true)
         physObj:Wake()
     end
     
     if !IsValid(entity) then return end
-    
+
+    local invData = self.containerModel[model]["invData"]
     ix.inventory.New(0, entity:GetName(), function(inventory)
             inventory:SetSize(invData["w"], invData["h"])
             entity:SetInventory(inventory)
@@ -102,7 +121,7 @@ function PLUGIN:spawnContainer(point)
 
     local result = self:chooseRandom()
     local inv = entity:GetInventory()
-    local items = math.random(1,ix.config.Get("lootCount"))
+    local items = math.random(1, ix.config.Get("lootCount"))
     for i=1, items do
         local item = table.Random(self.category[result])
         inv:Add(item)
@@ -111,7 +130,6 @@ function PLUGIN:spawnContainer(point)
     local spawnedContainer = {entity, position}
 
     table.insert(self.spawnedContainers, spawnContainer)
-    PLUGIN:SaveLootContainers()
 end
 
 function PLUGIN:chooseRandom()

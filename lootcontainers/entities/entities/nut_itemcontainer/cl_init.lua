@@ -7,11 +7,11 @@ local COLOR_UNLOCKED = Color(135, 211, 124, 200)
 function ENT:OnPopulateEntityInfo(tooltip)
 	surface.SetFont("ixIconsSmall")
 
-	-- minimal tooltips have centered text so we'll draw the icon above the name instead
 	if (tooltip:IsMinimal()) then
+		local icon = tooltip:AddRow("icon")
 		icon:SetFont("ixIconsSmall")
 		icon:SetTextColor(COLOR_UNLOCKED)
-		icon:SetText(iconText)
+		icon:SetText("L")
 		icon:SizeToContents()
 	end
 
@@ -30,8 +30,4 @@ function ENT:OnPopulateEntityInfo(tooltip)
 			surface.SetTextPos(4, height * 0.5)
 		end
 	end
-
-	--local description = tooltip:AddRow("description")
-	--description:SetText("A container with some random stuff in it")
-	--description:SizeToContents()
 end

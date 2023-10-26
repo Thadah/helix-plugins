@@ -72,8 +72,9 @@ end
 
 function PLUGIN:spawnContainer(point)
     local model = point[2]
-    if !IsValid(model) then
-        model = "models/props_junk/garbage_bag001a.mdl"
+    local containerModel = self.containerModel[model]
+    if !containerModel then
+        containerModel = self.containerModel["models/props_junk/garbage_bag001a.mdl"]
     end
 
     local positionOffset = Vector(math.random(-32, 32), math.random(-32, 32), math.random(0, 16))
@@ -113,7 +114,7 @@ function PLUGIN:spawnContainer(point)
     
     if !IsValid(entity) then return end
 
-    local invData = self.containerModel[model]["invData"]
+    local invData = containerModel["invData"]
     ix.inventory.New(0, entity:GetName(), function(inventory)
             inventory:SetSize(invData["w"], invData["h"])
             entity:SetInventory(inventory)

@@ -69,6 +69,10 @@ ix.command.Add("LootAddSpawn", {
 	OnRun = function(self, client, model)
 		local location = client:GetEyeTrace().HitPos
 		location.z = location.z + 10
+		if !util.IsValidModel(model) then
+			client:Notify("Invalid model! Please input a valid Garry's Mod model")
+			return
+		end
 		PLUGIN:AddSpawner(location, model)
 		client:Notify("You've added a new container spawner")
 	end

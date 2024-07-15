@@ -31,7 +31,7 @@ function PLUGIN:Think()
             end
         end
     end
-     
+
     if (#self.spawnedContainers > ix.config.Get("lootMaxWorldContainers")) then return end
     if (#self.spawnedContainers > (ix.config.Get("lootMaxContainerSpawn")*#self.spawners)) then return end
 
@@ -125,7 +125,11 @@ function PLUGIN:spawnContainer(point)
     local items = math.random(1, ix.config.Get("lootCount"))
     for i=1, items do
         local item = table.Random(self.category[result])
-        inv:Add(item)
+        if ix.item.list[item] then
+            inv:Add(item)
+        else
+            ErrorNoHalt("Warning: Item " .. item .. " does not exist in ix.item.list")
+        end
     end
 
     local spawnedContainer = {entity, position}
@@ -143,7 +147,6 @@ function PLUGIN:chooseRandom()
     local randomWeight = math.random() * totalWeight
     local selectedRarity
 
-    local result = 0;
     for k, rarity in pairs(self.rarity) do
         if randomWeight < rarity[1] then
             selectedRarity = table.Random(rarity[2])
@@ -179,7 +182,7 @@ end)
 function PLUGIN:SaveLootContainers()
     local data = {}
 
-  	data.containers = {}
+    data.containers = {}
     data.spawnedContainers = {}
     data.spawners = {}
     data.trashcans = {}
@@ -215,7 +218,7 @@ function PLUGIN:SaveLootContainers()
         
     end
 
-  	self:SetData(data)
+    self:SetData(data)
 end
 
 function PLUGIN:SaveData()
